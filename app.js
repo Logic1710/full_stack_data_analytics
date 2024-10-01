@@ -178,28 +178,34 @@ app.get('/data_type', async (req, res) => {
 
 app.get('/data_with_location', async (req, res) => {
     try {
-        const data = await ElectricVehicleUSA.find();
-
-        const transformedData = data.map(record => {
-            const vehicleLocation = record['Vehicle Location'];
-
-            if (vehicleLocation && vehicleLocation.startsWith('POINT')) {
-                const coordinates = vehicleLocation
-                    .replace('POINT (', '')  // Remove "POINT ("
-                    .replace(')', '')        // Remove closing ")"
-                    .split(' ');             // Split by space
-
-                const longitude = parseFloat(coordinates[0]);
-                const latitude = parseFloat(coordinates[1]);
-
-                return {
-                    city: record.City,
-                    latitude,
-                    longitude
-                };
-            } else {
-                return { city: record.City };
+        const data = await ElectricVehicleUSA.aggregate([
+            {
+                $group: {
+                    _id: "$City",
+                    count: { $sum: 1 },
+                    locations: { $addToSet: "$Vehicle Location" }
+                }
             }
+        ]);
+
+        const transformedData = data.flatMap(record => {
+            return record.locations
+                .filter(location => location && location.startsWith('POINT'))
+                .map(location => {
+                    const coordinates = location
+                        .replace('POINT (', '')  // Remove "POINT ("
+                        .replace(')', '')        // Remove closing ")"
+                        .split(' ');             // Split by space
+
+                    const longitude = parseFloat(coordinates[0]);
+                    const latitude = parseFloat(coordinates[1]);
+
+                    return {
+                        city: record._id,
+                        latitude,
+                        longitude
+                    };
+                });
         });
 
         res.json(transformedData);
@@ -208,6 +214,7 @@ app.get('/data_with_location', async (req, res) => {
         res.status(500).send('Error retrieving data');
     }
 });
+
 
 app.get('/data_cafv', async (req, res) => {
     try {
@@ -222,7 +229,7 @@ app.get('/data_cafv', async (req, res) => {
                     _id: "$Model",
                     count: { $sum: 1 },
                     makes: { $addToSet: "$Make" },
-                    cafv: {$addToSet: "$Clean Alternative Fuel Vehicle (CAFV) Eligibility"}
+                    cafv: { $addToSet: "$Clean Alternative Fuel Vehicle (CAFV) Eligibility" }
                 }
             }
         ]);
