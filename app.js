@@ -62,7 +62,7 @@ app.get('/data_count', async (req, res) => {
 });
 
 
-app.get('/data/aggregated_brand', async (req, res) => {
+app.get('/data_brand', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             { $group: { _id: "$Make", count: { $sum: 1 } } },
@@ -75,7 +75,7 @@ app.get('/data/aggregated_brand', async (req, res) => {
     }
 });
 
-app.get('/data/aggregated_city', async (req, res) => {
+app.get('/data_city', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             { $group: { _id: "$City", count: { $sum: 1 } } },
@@ -88,7 +88,7 @@ app.get('/data/aggregated_city', async (req, res) => {
     }
 });
 
-app.get('/data/aggregated_county', async (req, res) => {
+app.get('/data_county', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             { $group: { _id: "$County", count: { $sum: 1 } } },
@@ -101,11 +101,21 @@ app.get('/data/aggregated_county', async (req, res) => {
     }
 });
 
-app.get('/data/aggregated_year', async (req, res) => {
+app.get('/data_year', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
-            { $group: { _id: "$Model Year", count: { $sum: 1 } } },
-            { $sort: { _id: 1 } }
+            {
+                $match: {
+                    "Model Year": { $gte: 2011, $lte: 2024 }  // Filter for Model Year between 2011 and 2024
+                }
+            },
+            {
+                $group: {
+                    _id: { $toString: "$Model Year" },  // Convert Model Year to string
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: -1 } }  // Sort by Model Year
         ]);
         res.json(data);
     } catch (error) {
@@ -113,7 +123,7 @@ app.get('/data/aggregated_year', async (req, res) => {
     }
 });
 
-app.get('/data/model', async (req, res) => {
+app.get('/data_model', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             { $group: { _id: "$Model", count: { $sum: 1 } } },
@@ -126,7 +136,7 @@ app.get('/data/model', async (req, res) => {
     }
 });
 
-app.get('/data/model_range', async (req, res) => {
+app.get('/data_range', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             {
@@ -155,7 +165,7 @@ app.get('/data/model_range', async (req, res) => {
 });
 
 
-app.get('/data/aggregated_type', async (req, res) => {
+app.get('/data_type', async (req, res) => {
     try {
         const data = await ElectricVehicleUSA.aggregate([
             { $group: { _id: "$Electric Vehicle Type", count: { $sum: 1 } } }
@@ -168,15 +178,12 @@ app.get('/data/aggregated_type', async (req, res) => {
 
 app.get('/data_with_location', async (req, res) => {
     try {
-        const data = await ElectricVehicleUSA.find();  // Limit to 100 records for performance
+        const data = await ElectricVehicleUSA.find();
 
-        // Transform the data to return only city, latitude, and longitude
         const transformedData = data.map(record => {
             const vehicleLocation = record['Vehicle Location'];
 
-            // Check if vehicleLocation is in the correct format and extract the coordinates
             if (vehicleLocation && vehicleLocation.startsWith('POINT')) {
-                // Extract the coordinates from the POINT format
                 const coordinates = vehicleLocation
                     .replace('POINT (', '')  // Remove "POINT ("
                     .replace(')', '')        // Remove closing ")"
@@ -191,7 +198,7 @@ app.get('/data_with_location', async (req, res) => {
                     longitude
                 };
             } else {
-                return { city: record.City };  // Return city if location is not available
+                return { city: record.City };
             }
         });
 
@@ -202,18 +209,31 @@ app.get('/data_with_location', async (req, res) => {
     }
 });
 
-app.get('/data/cafv', async (req, res) => {
+app.get('/data_cafv', async (req, res) => {
     try {
-        const data = await ElectricVehicleUSA.find({
-            "Clean Alternative Fuel Vehicle (CAFV) Eligibility": "Clean Alternative Fuel Vehicle Eligible"
-        });
+        const data = await ElectricVehicleUSA.aggregate([
+            {
+                $match: {
+                    "Clean Alternative Fuel Vehicle (CAFV) Eligibility": "Clean Alternative Fuel Vehicle Eligible"
+                }
+            },
+            {
+                $group: {
+                    _id: "$Model",
+                    count: { $sum: 1 },
+                    makes: { $addToSet: "$Make" },
+                    cafv: {$addToSet: "$Clean Alternative Fuel Vehicle (CAFV) Eligibility"}
+                }
+            }
+        ]);
 
-        // Format the data to return essential fields
+        // Format the grouped data to include essential fields
         const formattedData = data.map(record => {
             return {
-                make: record.Make,
-                model: record.Model,
-                cafvEligibility: record['Clean Alternative Fuel Vehicle (CAFV) Eligibility']
+                model: record._id,
+                // count: record.count,
+                makes: record.makes,
+                cafv: record.cafv
             };
         });
 
@@ -222,6 +242,7 @@ app.get('/data/cafv', async (req, res) => {
         res.status(500).send(error);
     }
 });
+
 
 
 
